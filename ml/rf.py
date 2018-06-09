@@ -58,5 +58,5 @@ rf1_imp = pd.DataFrame({'feature':feature_list, 'impt': clf.feature_importances_
 logging.debug(rf1_imp.sort('impt'))
 
 logging.debug("to save validation predictions ...")
-dump(predv / ctr, utils.tmp_data_path + 'rf_pred_v.joblib_dat')
+dump(predv / ctr, FLAGS.tmp_data_path + 'rf_pred_v.joblib_dat')
 
