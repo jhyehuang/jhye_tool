@@ -15,13 +15,16 @@ gdbt_param = {'max_depth':15, 'eta':.02, 'objective':'binary:logistic', 'verbose
 
 def parse_args(check=True):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--output_dir', type=str, default='./output',
+    parser.add_argument('--output_dir', type=str, default='/home/zhijie.huang/github/output/',
                         help='path to save log and checkpoint.')
+    
+    parser.add_argument('--train_set_path', type=str, default='/home/zhijie.huang/github/kaggle-avazu/avazu_data/',
+                        help='path to save train test and .')
 
-    parser.add_argument('--text', type=str, default='QuanSongCi.txt',
+    parser.add_argument('--tmp_data_path', type=str, default='/tmp/',
                         help='path to QuanSongCi.txt')
 
-    parser.add_argument('--num_steps', type=int, default=32,
+    parser.add_argument('--train_job_name', type=str, default='trian_job',
                         help='number of time steps of one sample.')
 
     parser.add_argument('--batch_size', type=int, default=3,
