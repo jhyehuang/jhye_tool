@@ -481,6 +481,7 @@ def calc_exptv(t0, vn_list, last_day_only=False, add_count=False):
     day_exps = {}
     cred_k=10
     day_v='21'
+    day_exps['21']={}
 
     #对列表中的每一列
     vn_list=['device_id','device_ip','app_or_web','C14','C17','C21',
@@ -494,7 +495,7 @@ def calc_exptv(t0, vn_list, last_day_only=False, add_count=False):
         for two in two_vn_list:
             vn=one+two
             filter_t1 = np.logical_and(t0a.day.values != 20, t0a.day.values < 31)
-            t0a[vn] = pd.Series(np.add(t0[one].astype('string').values , t0[two].astype('string').values)).astype('category').values.codes
+            t0a[vn] = pd.Series(np.add(t0[one].values , t0[two].values)).astype('category').values.codes
             day_exps[day_v][vn] = calcTVTransform(t0a, vn, 'click', cred_k, filter_t1)
             new_list.append(vn)
             
