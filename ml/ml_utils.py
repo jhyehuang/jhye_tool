@@ -488,6 +488,9 @@ def calc_exptv(t0, vn_list, last_day_only=False, add_count=False):
     new_list=[]
     for one in vn_list:
         two_vn_list=copy.deepcopy(vn_list)
+        two_vn_list.remove(one)
+        if len(two_vn_list)<1:
+            break
         for two in two_vn_list.remove(one):
             vn=one+two
             filter_t1 = np.logical_and(t0a.day.values != 20, t0a.day.values < 31)

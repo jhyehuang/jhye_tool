@@ -27,6 +27,15 @@ def parse_args(check=True):
     parser.add_argument('--train_job_name', type=str, default='trian_job',
                         help='number of time steps of one sample.')
 
+    parser.add_argument('--src_path', type=str, default='/home/zhijie.huang/github/kaggle-avazu/avazu_data/train_01.csv',
+                        help='src_path.')
+
+    parser.add_argument('--dst_app_path', type=str, default='/tmp/writer_app.csv',
+                        help='dst_app_path.')
+
+    parser.add_argument('--dst_site_path', type=str, default='/tmp/writer_site',
+                        help='dst_site_path ')
+
     parser.add_argument('--sample_pct', type=float, default=1,
                         help='batch size to use.')
 
