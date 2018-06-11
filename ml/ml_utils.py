@@ -4,12 +4,18 @@ from sklearn.utils import check_random_state
 import time
 import sys
 from joblib import dump, load
+import copy
+
+import logging
+from flags import parse_args
+FLAGS, unparsed = parse_args()
+
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s', level=logging.DEBUG)
 
 
 
-sample_pct = .05
 tvh = 'N'
-xgb_n_trees = 300
 
 
 #Please set following path accordingly
@@ -36,8 +42,8 @@ except:
 
 
 def print_help():
-    print ("usage: python utils -set_params [tvh=Y|N], [sample_pct]")
-    print ("for example: python utils -set_params N 0.05")
+    logging.debug ("usage: python utils -set_params [tvh=Y|N], [sample_pct]")
+    logging.debug ("for example: python utils -set_params N 0.05")
 
 def main():
     if sys.argv[1] == '-set_params' and len(sys.argv) == 4:
@@ -46,9 +52,9 @@ def main():
             sample_pct = float(sys.argv[3])  #1/0.05
             dump({'pct': sample_pct, 'tvh':tvh}, tmp_data_path + '_params.joblib_dat')
         except:
-            print_help()
+            logging.debug_help()
     else:
-        print_help()
+        logging.debug_help()
 
 if __name__ == "__main__":
     main()
@@ -56,15 +62,13 @@ if __name__ == "__main__":
 def get_agg(group_by, value, func):
     g1 = pd.Series(value).groupby(group_by)
     agg1  = g1.aggregate(func)
-    #print agg1
+    #logging.debug agg1
     r1 = agg1[group_by].values
     return r1
 
 # vn：特征，vn_y：标签列，cred_k：先验强度，r_k=0，
 #调用方式：p1 = calcLeaveOneOut2(df1, vn, 'click', n_ks[vn], 0, 0.25, mean0=pred_prev)
 def calcLeaveOneOut2(df, vn, vn_y, cred_k, r_k, power, mean0=None, add_count=False):
-    if mean0 is None:
-        mean0 = df_yt[vn_y].mean() * np.ones(df.shape[0])
 
     #每个特征取值对应的样本组成group
     _key_codes = df[vn].values.codes
@@ -78,29 +82,30 @@ def calcLeaveOneOut2(df, vn, vn_y, cred_k, r_k, power, mean0=None, add_count=Fal
     sum1 = grp1.aggregate(np.sum)
     cnt1 = grp1.aggregate(np.size)
     
-    #print sum1
-    #print cnt1
-    vn_sum = 'sum_' + vn
-    vn_cnt = 'cnt_' + vn
+    logging.debug(mean1.shape)
+    logging.debug(sum1.shape)
+    logging.debug(cnt1.shape)
+
     _sum = sum1[_key_codes].values
     _cnt = cnt1[_key_codes].values
     _mean = mean1[_key_codes].values
-    #print _sum[:10]
-    #print _cnt[:10]
-    #print _mean[:10]
-    #print _cnt[:10]
 
-    _mean[np.isnan(_sum)] = mean0.mean()
-    _cnt[np.isnan(_sum)] = 0    
+
+    _mean[np.isnan(_mean)] = mean0.mean()
+    _cnt[np.isnan(_cnt)] = 0    
     _sum[np.isnan(_sum)] = 0
-    #print _cnt[:10]
+    logging.debug(_mean[:10])
+    logging.debug(_cnt[:10])
+    logging.debug(_sum[:10])
 
+    #转化为负值
     _sum -= df[vn_y].values
     _cnt -= 1
-    #print _cnt[:10]
+    #logging.debug _cnt[:10]
 
     vn_yexp = 'exp2_'+vn
-#    df[vn_yexp] = (_sum + cred_k * mean0)/(_cnt + cred_k)
+    #    df[vn_yexp] = (_sum + cred_k * mean0)/(_cnt + cred_k)
+    #(总和+随机算子*均值)/(总数+随机算子)/均值    然后开4次方
     diff = np.power((_sum + cred_k * _mean)/(_cnt + cred_k) / _mean, power)
 
     if vn_yexp in df.columns:
@@ -108,10 +113,8 @@ def calcLeaveOneOut2(df, vn, vn_y, cred_k, r_k, power, mean0=None, add_count=Fal
     else:
         df[vn_yexp] = diff 
 
-    if r_k > 0:
-        df[vn_yexp] *= np.exp((np.random.rand(np.sum(filter_train))-.5) * r_k)
-
     if add_count:
+        vn_cnt=vn+'_cnt'
         df[vn_cnt] = _cnt
 
     return diff
@@ -154,7 +157,7 @@ def my_lift(order_by, p, y, w, n_rank, dual_axis=False, random_state=0, dither=1
     else:
         ax1.plot(xs, avg_y, 'r')
     
-    #print "logloss: ", logloss(p, y, w)
+    #logging.debug "logloss: ", logloss(p, y, w)
     
     return gini_norm(order_by, y, w)
 
@@ -208,9 +211,10 @@ def mergeLeaveOneOut2(df, dfv, vn):
 # cred_k：先验强度
 def calcTVTransform(df, vn, vn_y, cred_k, filter_train, mean0=None):
     #先验
+#    logging.debug(df)
     if mean0 is None:
         mean0 = df.ix[filter_train, vn_y].mean()
-        print ("mean0:", mean0)
+        logging.debug(str(mean0))
     else:
         mean0 = mean0[~filter_train]
 
@@ -219,47 +223,61 @@ def calcTVTransform(df, vn, vn_y, cred_k, filter_train, mean0=None):
     df_yt = df.ix[filter_train, ['_key1', vn_y]]
     #df_y.set_index([')key1'])
 
+    #按照参数输入的key对内容进行分组
     grp1 = df_yt.groupby(['_key1'])
+    #通过 key 分组获得 真值对应的 sum值
     sum1 = grp1[vn_y].aggregate(np.sum)
+    #通过 key 分组获得 真值对应的 元素个数    在取值为0时，和sum不同
     cnt1 = grp1[vn_y].aggregate(np.size)
-
-    vn_sum = 'sum_' + vn
-    vn_cnt = 'cnt_' + vn
-
-    v_codes = df.ix[~filter_train, '_key1']
+    
+    logging.debug(sum1)
+    logging.debug(cnt1)
+#    vn_sum = 'sum_' + vn
+#    vn_cnt = 'cnt_' + vn
+    
+    # 加工指定域以外的 值
+#    logging.debug((~filter_train).shape)
+    v_codes = df.ix[filter_train, '_key1']
+    logging.debug(v_codes.shape)
+    # 按照
     _sum = sum1[v_codes].values
     _cnt = cnt1[v_codes].values
+    logging.debug(_sum.shape)
+    logging.debug(_cnt.shape)
 
-    _cnt[np.isnan(_sum)] = 0
+    _cnt[np.isnan(_cnt)] = 0
     _sum[np.isnan(_sum)] = 0
 
     # 后验均值
     r = {}
     r['exp'] = (_sum + cred_k * mean0)/(_cnt + cred_k)
     r['cnt'] = _cnt
+    logging.debug(r)
     return r
 
 def cntDualKey(df, vn, vn2, key_src, key_tgt, fill_na=False):
     
-    print ("build src key")
+    logging.debug ("build src key")
     _key_src = np.add(df[key_src].astype('string').values, df[vn].astype('string').values)
-    print ("build tgt key")
+    logging.debug ("build tgt key")
     _key_tgt = np.add(df[key_tgt].astype('string').values, df[vn].astype('string').values)
     
     if vn2 is not None:
         _key_src = np.add(_key_src, df[vn2].astype('string').values)
         _key_tgt = np.add(_key_tgt, df[vn2].astype('string').values)
 
-    print ("aggreate by src key")
+    logging.debug ("aggreate by src key")
     grp1 = df.groupby(_key_src)
+    # 获得vn 在分组字段上的个数
     cnt1 = grp1[vn].aggregate(np.size)
     
-    print ("map to tgt key")
-    vn_sum = 'sum_' + vn + '_' + key_src + '_' + key_tgt
+    logging.debug ("map to tgt key")
+#    vn_sum = 'sum_' + vn + '_' + key_src + '_' + key_tgt
+    #  _key_src  count
     _cnt = cnt1[_key_tgt].values
 
     if fill_na is not None:
-        print ("fill in na")
+        logging.debug ("fill in na")
         _cnt[np.isnan(_cnt)] = fill_na    
 
     vn_cnt_tgt = 'cnt_' + vn + '_' + key_tgt
@@ -269,44 +287,55 @@ def cntDualKey(df, vn, vn2, key_src, key_tgt, fill_na=False):
 
 def my_grp_cnt(group_by, count_by):
     _ts = time.time()
+    #按照group_by 排序 ，返回索引
     _ord = np.lexsort((count_by, group_by))
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     _ts = time.time()    
-    _ones = pd.Series(np.ones(group_by.size))
-    print (time.time() - _ts)
-    _ts = time.time()    
+#    _ones = pd.Series(np.ones(group_by.size))
+    
+#    logging.debug (time.time() - _ts)
+#    _ts = time.time()    
     #_cs1 = _ones.groupby(group_by[_ord]).cumsum().values
+    # group_by 的尺寸
     _cs1 = np.zeros(group_by.size)
+    # 初始化
     _prev_grp = '___'
-    runnting_cnt = 0
+    
+    same_cnt = 0
     for i in range(1, group_by.size):
+        # 读取到索引
         i0 = _ord[i]
+        #判断前一个域值是否和当前相等
         if _prev_grp == group_by[i0]:
+            #判断count_by 的前一个是否等于当前
+            # true  running +1
             if count_by[_ord[i-1]] != count_by[i0]: 
-                running_cnt += 1
+                same_cnt += 1
         else:
-            running_cnt = 1
+            same_cnt = 1
             _prev_grp = group_by[i0]
         if i == group_by.size - 1 or group_by[i0] != group_by[_ord[i+1]]:
+            #如果   i  max 或者 group_by 当前不等于下一个 
             j = i
             while True:
                 j0 = _ord[j]
-                _cs1[j0] = running_cnt
+                _cs1[j0] = same_cnt
                 if j == 0 or group_by[_ord[j-1]] != group_by[j0]:
                     break
                 j -= 1
+        #排序之后，找出相等的值得数量
             
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     if True:
         return _cs1
     else:
         _ts = time.time()    
 
         org_idx = np.zeros(group_by.size, dtype=np.int)
-        print (time.time() - _ts)
+        logging.debug (time.time() - _ts)
         _ts = time.time()    
         org_idx[_ord] = np.asarray(range(group_by.size))
-        print (time.time() - _ts)
+        logging.debug (time.time() - _ts)
         _ts = time.time()    
 
         return _cs1[org_idx]
@@ -314,7 +343,7 @@ def my_grp_cnt(group_by, count_by):
 def my_cnt(group_by):
     _ts = time.time()
     _ord = np.argsort(group_by)
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     _ts = time.time()    
     #_cs1 = _ones.groupby(group_by[_ord]).cumsum().values
     _cs1 = np.zeros(group_by.size)
@@ -336,16 +365,16 @@ def my_cnt(group_by):
                     break
                 j -= 1
             
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     return _cs1
 
 def my_grp_value_diff(group_by, order_by, value):
     _ts = time.time()
     _ord = np.lexsort((order_by, group_by))
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     _ts = time.time()    
     _ones = pd.Series(np.ones(group_by.size))
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     _ts = time.time()    
     #_cs1 = _ones.groupby(group_by[_ord]).cumsum().values
     _cs1 = np.zeros(group_by.size)
@@ -357,17 +386,17 @@ def my_grp_value_diff(group_by, order_by, value):
         else:
             _cs1[i0] = 1e7
             _prev_grp = group_by[i0]
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     
     return np.minimum(_cs1, 1e7)
 
 def my_grp_idx(group_by, order_by):
     _ts = time.time()
     _ord = np.lexsort((order_by, group_by))
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     _ts = time.time()    
-    _ones = pd.Series(np.ones(group_by.size))
-    print (time.time() - _ts)
+#    _ones = pd.Series(np.ones(group_by.size))
+    logging.debug (time.time() - _ts)
     _ts = time.time()    
     #_cs1 = _ones.groupby(group_by[_ord]).cumsum().values
     _cs1 = np.zeros(group_by.size)
@@ -379,14 +408,15 @@ def my_grp_idx(group_by, order_by):
         else:
             _cs1[i] = 1
             _prev_grp = group_by[i0]
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     _ts = time.time()    
     
     org_idx = np.zeros(group_by.size, dtype=np.int)
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     _ts = time.time()    
+    # 排序之后的 有序列表对应的下标
     org_idx[_ord] = np.asarray(range(group_by.size))
-    print (time.time() - _ts)
+    logging.debug (time.time() - _ts)
     _ts = time.time()    
 
     return _cs1[org_idx]
@@ -395,31 +425,31 @@ def calcDualKey(df, vn, vn2, key_src, key_tgt, vn_y, cred_k, mean0=None, add_cou
     if mean0 is None:
         mean0 = df[vn_y].mean()
     
-    print ("build src key")
+    logging.debug ("build src key")
     _key_src = np.add(df[key_src].astype('string').values, df[vn].astype('string').values)
-    print ("build tgt key")
+    logging.debug ("build tgt key")
     _key_tgt = np.add(df[key_tgt].astype('string').values, df[vn].astype('string').values)
     
     if vn2 is not None:
         _key_src = np.add(_key_src, df[vn2].astype('string').values)
         _key_tgt = np.add(_key_tgt, df[vn2].astype('string').values)
 
-    print ("aggreate by src key")
+    logging.debug ("aggreate by src key")
     grp1 = df.groupby(_key_src)
     sum1 = grp1[vn_y].aggregate(np.sum)
     cnt1 = grp1[vn_y].aggregate(np.size)
     
-    print ("map to tgt key")
-    vn_sum = 'sum_' + vn + '_' + key_src + '_' + key_tgt
+    logging.debug ("map to tgt key")
+#    vn_sum = 'sum_' + vn + '_' + key_src + '_' + key_tgt
     _sum = sum1[_key_tgt].values
     _cnt = cnt1[_key_tgt].values
 
     if fill_na:
-        print ("fill in na")
+        logging.debug ("fill in na")
         _cnt[np.isnan(_sum)] = 0    
         _sum[np.isnan(_sum)] = 0
 
-    print ("calc exp")
+    logging.debug ("calc exp")
     if vn2 is not None:
         vn_yexp = 'exp_' + vn + '_' + vn2 + '_' + key_src + '_' + key_tgt
     else:
@@ -427,7 +457,7 @@ def calcDualKey(df, vn, vn2, key_src, key_tgt, vn_y, cred_k, mean0=None, add_cou
     df[vn_yexp] = (_sum + cred_k * mean0)/(_cnt + cred_k)
 
     if add_count:
-        print ("add counts")
+        logging.debug ("add counts")
         vn_cnt_src = 'cnt_' + vn + '_' + key_src
         df[vn_cnt_src] = _cnt
         grp2 = df.groupby(_key_tgt)
@@ -437,11 +467,11 @@ def calcDualKey(df, vn, vn2, key_src, key_tgt, vn_y, cred_k, mean0=None, add_cou
         df[vn_cnt_tgt] = _cnt2
 
 def get_set_diff(df, vn, f1, f2):
-    #print(df[vn].values.sum())
+    #logging.debug(df[vn].values.sum())
     set1 = set(np.unique(df[vn].values[f1]))
     set2 = set(np.unique(df[vn].values[f2]))
     set2_1 = set2 - set1
-    print (vn, '\t', len(set1), '\t', len(set2), '\t', len(set2_1))
+    logging.debug (vn, '\t', len(set1), '\t', len(set2), '\t', len(set2_1))
     return len(set2_1) * 1.0 / len(set2)
 
 
@@ -449,88 +479,31 @@ def calc_exptv(t0, vn_list, last_day_only=False, add_count=False):
     # 取出day和click两列
     t0a = t0.ix[:, ['day', 'click']].copy()
     day_exps = {}
+    cred_k=10
+    day_v='21'
 
     #对列表中的每一列
-    for vn in vn_list:
-        if vn == 'dev_id_ip':
-            t0a[vn] = pd.Series(np.add(t0.device_id.values , t0.device_ip.values)).astype('category').values.codes
-        elif vn == 'dev_ip_aw':
-            t0a[vn] = pd.Series(np.add(t0.device_ip.values , t0.app_or_web.astype('string').values)).astype('category').values.codes
-        elif vn == 'C14_aw':
-            t0a[vn] = pd.Series(np.add(t0.C14.astype('string').values , t0.app_or_web.astype('string').values)).astype('category').values.codes
-        elif vn == 'C17_aw':
-            t0a[vn] = pd.Series(np.add(t0.C17.astype('string').values , t0.app_or_web.astype('string').values)).astype('category').values.codes
-        elif vn == 'C21_aw':
-            t0a[vn] = pd.Series(np.add(t0.C21.astype('string').values , t0.app_or_web.astype('string').values)).astype('category').values.codes
-        elif vn == 'as_domain':
-            t0a[vn] = pd.Series(np.add(t0.app_domain.values , t0.site_domain.values)).astype('category').values.codes
-        elif vn == 'site_app_id':
-            t0a[vn] = pd.Series(np.add(t0.site_id.values , t0.app_id.values)).astype('category').values.codes
-        elif vn == 'app_model':
-            t0a[vn] = pd.Series(np.add(t0.app_id.values , t0.device_model.values)).astype('category').values.codes
-        elif vn == 'app_site_model':
-            t0a[vn] = pd.Series(np.add(t0.app_id.values , np.add(t0.site_id.values , t0.device_model.values))).astype('category').values.codes
-        elif vn == 'site_model':
-            t0a[vn] = pd.Series(np.add(t0.site_id.values , t0.device_model.values)).astype('category').values.codes
-        elif vn == 'app_site':
-            t0a[vn] = pd.Series(np.add(t0.app_id.values , t0.site_id.values)).astype('category').values.codes
-        elif vn == 'site_ip':
-            t0a[vn] = pd.Series(np.add(t0.site_id.values , t0.device_ip.values)).astype('category').values.codes
-        elif vn == 'app_ip':
-            t0a[vn] = pd.Series(np.add(t0.site_id.values , t0.device_ip.values)).astype('category').values.codes
-        elif vn == 'site_id_domain':
-            t0a[vn] = pd.Series(np.add(t0.site_id.values , t0.site_domain.values)).astype('category').values.codes
-        elif vn == 'site_hour':
-            t0a[vn] = pd.Series(np.add(t0.site_domain.values , (t0.hour.values % 100).astype('string'))).astype('category').values.codes
-        else:
-            t0a[vn] = t0[vn]
-
-        for day_v in range(22, 32):  #【22，23，。。。，31】
-            cred_k = 10   # cred_k：先验强度
-            if day_v not in day_exps:
-                day_exps[day_v] = {}
-
-            vn_key = vn
-
-            import time
-            _tstart = time.time()
-
-            day1 = 20
-            if last_day_only:
-                day1 = day_v - 2
-
-            # day_v之前的天的样本
-            filter_t = np.logical_and(t0.day.values > day1, t0.day.values <= day_v)
-            vn_key = vn
-            t1 = t0a.ix[filter_t, :].copy()
-
-            #训练集中（<31）非day_v天的样本
-            filter_t2 = np.logical_and(t1.day.values != day_v, t1.day.values < 31)
+    vn_list=['device_id','device_ip','app_or_web','C14','C17','C21',
+    'app_domain','site_domain','site_id','app_id','device_model','hour']
+    new_list=[]
+    for one in vn_list:
+        two_vn_list=copy.deepcopy(vn_list)
+        for two in two_vn_list.remove(one):
+            vn=one+two
+            filter_t1 = np.logical_and(t0a.day.values != 20, t0a.day.values < 31)
+            t0a[vn] = pd.Series(np.add(t0[one].astype('string').values , t0[two].astype('string').values)).astype('category').values.codes
+            day_exps[day_v][vn] = calcTVTransform(t0a, vn, 'click', cred_k, filter_t1)
+            new_list.append(vn)
             
-            if vn == 'app_or_web':
-                day_exps[day_v][vn_key] = calcTVTransform(t1, vn, 'click', cred_k, filter_t2)
-            else:
-                if last_day_only:
-                    day_exps[day_v][vn_key] = calcTVTransform(t1, vn, 'click', cred_k, filter_t2, mean0=t0.expld_app_or_web.values)
-                else:
-                    day_exps[day_v][vn_key] = calcTVTransform(t1, vn, 'click', cred_k, filter_t2, mean0=t0.exptv_app_or_web.values)
-            
-            print (vn, vn_key, " ", day_v, " done in ", time.time() - _tstart)
-        t0a.drop(vn, inplace=True, axis=1)
-        
-    for vn in vn_list:
+    for vn in new_list:
         vn_key = vn
-            
         vn_exp = 'exptv_'+vn_key
-        if last_day_only:
-            vn_exp='expld_'+vn_key
             
         t0[vn_exp] = np.zeros(t0.shape[0])
         if add_count:
             t0['cnttv_'+vn_key] = np.zeros(t0.shape[0])
-        for day_v in range(22, 32):
-            print (vn, vn_key, day_v, t0.ix[t0.day.values == day_v, vn_exp].values.size, day_exps[day_v][vn_key]['exp'].size)
-            t0.loc[t0.day.values == day_v, vn_exp]=day_exps[day_v][vn_key]['exp']
-            if add_count:
-                t0.loc[t0.day.values == day_v, 'cnttv_'+vn_key]=day_exps[day_v][vn_key]['cnt']
-        
+        t0.loc[t0.day.values == day_v, vn_exp]=day_exps[day_v][vn_key]['exp']
+        if add_count:
+            t0.loc[t0.day.values == day_v, 'cnttv_'+vn_key]=day_exps[day_v][vn_key]['cnt']
+    
+    return new_list

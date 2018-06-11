@@ -27,11 +27,11 @@ def parse_args(check=True):
     parser.add_argument('--train_job_name', type=str, default='trian_job',
                         help='number of time steps of one sample.')
 
-    parser.add_argument('--batch_size', type=int, default=3,
+    parser.add_argument('--sample_pct', type=float, default=1,
                         help='batch size to use.')
 
-    parser.add_argument('--dictionary', type=str, default='dictionary.json',
-                        help='path to dictionary.json.')
+    parser.add_argument('--xgb_n_trees', type=int, default=300,
+                        help='xgb_n_trees')
 
     parser.add_argument('--reverse_dictionary', type=str, default='reverse_dictionary.json',
                         help='path to reverse_dictionary.json.')
