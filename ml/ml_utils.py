@@ -7,8 +7,7 @@ from joblib import dump, load
 import copy
 
 import logging
-from flags import parse_args
-FLAGS, unparsed = parse_args()
+from flags import FLAGS, unparsed
 
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s', level=logging.DEBUG)
@@ -194,6 +193,7 @@ def gini_norm(pred, y, weight=None):
 
     return g1/g0
 
+#如果俩个样本集内重叠就是按照 1赋值，其他不重回情况取1的均值
 def mergeLeaveOneOut2(df, dfv, vn):
     _key_codes = df[vn].values.codes
     vn_yexp = 'exp2_'+vn
@@ -477,14 +477,14 @@ def get_set_diff(df, vn, f1, f2):
 
 def calc_exptv(t0, vn_list, last_day_only=False, add_count=False):
     # 取出day和click两列
-    t0a = t0.ix[:, ['day', 'click']].copy()
+    t0a = t0.ix[:, ['one_day', 'click']].copy()
     day_exps = {}
     cred_k=10
     day_v='21'
     day_exps['21']={}
 
     #对列表中的每一列
-    vn_list=['device_id','device_ip','app_or_web','C14','C17','C21',
+    vn_list=['device_id','device_ip','C14','C17','C21',
     'app_domain','site_domain','site_id','app_id','device_model','hour']
     new_list=[]
     for one in vn_list:
@@ -494,8 +494,8 @@ def calc_exptv(t0, vn_list, last_day_only=False, add_count=False):
             break
         for two in two_vn_list:
             vn=one+two
-            filter_t1 = np.logical_and(t0a.day.values != 20, t0a.day.values < 31)
-            t0a[vn] = pd.Series(np.add(t0[one].values , t0[two].values)).astype('category').values.codes
+            filter_t1 = np.logical_and(t0a.one_day.values != 20, t0a.one_day.values < 31)
+            t0a[vn] = pd.Series(np.add(t0[one].astype('str').values , t0[two].astype('str').values)).astype('category').values.codes
             day_exps[day_v][vn] = calcTVTransform(t0a, vn, 'click', cred_k, filter_t1)
             new_list.append(vn)
             
@@ -506,8 +506,8 @@ def calc_exptv(t0, vn_list, last_day_only=False, add_count=False):
         t0[vn_exp] = np.zeros(t0.shape[0])
         if add_count:
             t0['cnttv_'+vn_key] = np.zeros(t0.shape[0])
-        t0.loc[t0.day.values == day_v, vn_exp]=day_exps[day_v][vn_key]['exp']
+        t0.loc[t0.one_day.values == day_v, vn_exp]=day_exps[day_v][vn_key]['exp']
         if add_count:
-            t0.loc[t0.day.values == day_v, 'cnttv_'+vn_key]=day_exps[day_v][vn_key]['cnt']
+            t0.loc[t0.one_day.values == day_v, 'cnttv_'+vn_key]=day_exps[day_v][vn_key]['cnt']
     
     return new_list
