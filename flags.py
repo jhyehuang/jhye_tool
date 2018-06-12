@@ -88,7 +88,7 @@ def win_parse_args(check=True):
     parser.add_argument('--train_set_path', type=str, default='d:/GitHub/kaggle-avazu/avazu_data',
                         help='path to save train test and .')
 
-    parser.add_argument('--tmp_data_path', type=str, default='d:/GitHub/data/avazu_data/output',
+    parser.add_argument('--tmp_data_path', type=str, default='d:/GitHub/data/avazu_data/output/',
                         help='path to QuanSongCi.txt')
 
     parser.add_argument('--train_job_name', type=str, default='trian_job',

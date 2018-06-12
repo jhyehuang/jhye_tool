@@ -480,8 +480,8 @@ def calc_exptv(t0, vn_list, last_day_only=False, add_count=False):
     t0a = t0.ix[:, ['one_day', 'click']].copy()
     day_exps = {}
     cred_k=10
-    day_v='21'
-    day_exps['21']={}
+    day_v=21
+    day_exps[21]={}
 
     #对列表中的每一列
     vn_list=['device_id','device_ip','C14','C17','C21',
@@ -494,20 +494,26 @@ def calc_exptv(t0, vn_list, last_day_only=False, add_count=False):
             break
         for two in two_vn_list:
             vn=one+two
-            filter_t1 = np.logical_and(t0a.one_day.values != 20, t0a.one_day.values < 31)
+            filter_t1 = (t0a.one_day.values ==day_v )
             t0a[vn] = pd.Series(np.add(t0[one].astype('str').values , t0[two].astype('str').values)).astype('category').values.codes
             day_exps[day_v][vn] = calcTVTransform(t0a, vn, 'click', cred_k, filter_t1)
-            new_list.append(vn)
+            
             
     for vn in new_list:
         vn_key = vn
         vn_exp = 'exptv_'+vn_key
-            
+        
+        m=(t0.one_day.values == day_v)
+        print(t0.one_day.values.shape)
+        print(m)
         t0[vn_exp] = np.zeros(t0.shape[0])
         if add_count:
             t0['cnttv_'+vn_key] = np.zeros(t0.shape[0])
-        t0.loc[t0.one_day.values == day_v, vn_exp]=day_exps[day_v][vn_key]['exp']
+            new_list.append('cnttv_'+vn_key)
+        t0.loc[m, vn_exp]=day_exps[day_v][vn_key]['exp']
         if add_count:
-            t0.loc[t0.one_day.values == day_v, 'cnttv_'+vn_key]=day_exps[day_v][vn_key]['cnt']
-    
+            t0.loc[m, 'cnttv_'+vn_key]=day_exps[day_v][vn_key]['cnt']
+            new_list.append('cnttv_'+vn_key)
+        new_list.append(vn_exp)
+    new_list=list(set(new_list))
     return new_list
